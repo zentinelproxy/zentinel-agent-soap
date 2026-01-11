@@ -1,0 +1,59 @@
+[package]
+name = "sentinel-agent-soap"
+version = "0.1.0"
+edition = "2021"
+authors = ["Raskell <hello@raskell.io>"]
+description = "SOAP security agent for Sentinel proxy - envelope validation, WS-Security, and operation control"
+license = "Apache-2.0"
+repository = "https://github.com/raskell-io/sentinel-agent-soap"
+keywords = ["sentinel", "proxy", "agent", "soap", "xml", "security"]
+categories = ["network-programming", "web-programming"]
+readme = "README.md"
+
+[dependencies]
+# Sentinel SDK
+sentinel-agent-sdk = { git = "https://github.com/raskell-io/sentinel-agent-rust-sdk.git", branch = "main" }
+
+# Async runtime
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
+async-trait = "0.1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# XML parsing - quick-xml is fast and safe (no XXE by default)
+quick-xml = { version = "0.37", features = ["serialize"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
+
+# Pattern matching for operation rules
+glob = "0.3"
+
+# CLI argument parsing
+clap = { version = "4", features = ["derive"] }
+
+# Base64 for WS-Security tokens
+base64 = "0.22"
+
+# Time for WS-Security timestamp validation
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3"
+
+[[bin]]
+name = "sentinel-agent-soap"
+path = "src/main.rs"
+
+[lib]
+name = "sentinel_agent_soap"
+path = "src/lib.rs"
