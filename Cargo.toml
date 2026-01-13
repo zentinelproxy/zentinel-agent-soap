@@ -6,7 +6,7 @@ authors = ["Raskell <hello@raskell.io>"]
 description = "SOAP security agent for Sentinel proxy - envelope validation, WS-Security, and operation control"
 license = "Apache-2.0"
 repository = "https://github.com/raskell-io/sentinel-agent-soap"
-keywords = ["sentinel", "proxy", "agent", "soap", "xml", "security"]
+keywords = ["sentinel", "proxy", "agent", "soap", "xml"]
 categories = ["network-programming", "web-programming"]
 readme = "README.md"
 
