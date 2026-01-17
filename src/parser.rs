@@ -350,13 +350,11 @@ fn check_xxe_patterns(xml: &str) -> Result<(), Violation> {
     }
 
     // System/Public entity references
-    if xml.contains("SYSTEM") || xml.contains("PUBLIC") {
-        if xml.contains("<!") {
-            return Err(Violation::new(
-                ViolationCode::ExternalEntityDetected,
-                "External entity references are not allowed",
-            ));
-        }
+    if (xml.contains("SYSTEM") || xml.contains("PUBLIC")) && xml.contains("<!") {
+        return Err(Violation::new(
+            ViolationCode::ExternalEntityDetected,
+            "External entity references are not allowed",
+        ));
     }
 
     Ok(())

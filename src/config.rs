@@ -76,19 +76,14 @@ impl Default for SettingsConfig {
 }
 
 /// Failure action when violations are detected.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum FailAction {
     /// Block the request
+    #[default]
     Block,
     /// Allow the request (log only)
     Allow,
-}
-
-impl Default for FailAction {
-    fn default() -> Self {
-        Self::Block
-    }
 }
 
 /// SOAP envelope validation configuration.
@@ -226,19 +221,14 @@ impl Default for OperationsConfig {
 }
 
 /// Operation control mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum OperationMode {
     /// Only allow listed operations
+    #[default]
     Allowlist,
     /// Block listed operations
     Denylist,
-}
-
-impl Default for OperationMode {
-    fn default() -> Self {
-        Self::Allowlist
-    }
 }
 
 /// XXE (XML External Entity) prevention configuration.

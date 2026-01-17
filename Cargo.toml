@@ -1,6 +1,6 @@
 [package]
 name = "sentinel-agent-soap"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 authors = ["Raskell <hello@raskell.io>"]
 description = "SOAP security agent for Sentinel proxy - envelope validation, WS-Security, and operation control"
@@ -11,8 +11,8 @@ categories = ["network-programming", "web-programming"]
 readme = "README.md"
 
 [dependencies]
-# Sentinel SDK
-sentinel-agent-sdk = "0.1"
+# Sentinel Agent Protocol (v2)
+sentinel-agent-protocol = "0.3"
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
