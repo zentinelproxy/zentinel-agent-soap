@@ -1,23 +1,23 @@
 //! Main SOAP Security Agent implementation.
 //!
-//! Coordinates all validators and integrates with Sentinel Agent Protocol v2.
+//! Coordinates all validators and integrates with Zentinel Agent Protocol v2.
 
 use crate::config::{FailAction, SoapSecurityConfig};
 use crate::error::{soap_fault_response, SoapFaultVersion, Violation, ViolationCode};
 use crate::parser::{parse_soap_action, parse_soap_envelope};
 use crate::validator::{SoapValidator, ValidationMetrics};
 use async_trait::async_trait;
-use sentinel_agent_protocol::v2::{
+use zentinel_agent_protocol::v2::{
     AgentCapabilities, AgentFeatures, AgentHandlerV2, AgentLimits, DrainReason, HealthConfig,
     HealthStatus, MetricsReport, ShutdownReason,
 };
-use sentinel_agent_protocol::{
+use zentinel_agent_protocol::{
     AgentResponse, Decision, EventType, HeaderOp, RequestHeadersEvent,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 use tracing::{debug, info, warn};
 
-/// SOAP Security Agent for Sentinel.
+/// SOAP Security Agent for Zentinel.
 ///
 /// Validates SOAP messages for security concerns including envelope structure,
 /// WS-Security, operation control, and XXE prevention.
@@ -369,7 +369,7 @@ impl AgentHandlerV2 for SoapSecurityAgent {
     /// Handle request body chunk event.
     async fn on_request_body_chunk(
         &self,
-        event: sentinel_agent_protocol::RequestBodyChunkEvent,
+        event: zentinel_agent_protocol::RequestBodyChunkEvent,
     ) -> AgentResponse {
         // Decode body from base64 if needed
         use base64::{engine::general_purpose::STANDARD, Engine as _};
@@ -379,7 +379,7 @@ impl AgentHandlerV2 for SoapSecurityAgent {
         // Create a minimal RequestHeadersEvent for processing
         // In a real implementation, we'd cache headers from the initial request
         let headers_event = RequestHeadersEvent {
-            metadata: sentinel_agent_protocol::RequestMetadata {
+            metadata: zentinel_agent_protocol::RequestMetadata {
                 correlation_id: event.correlation_id.clone(),
                 request_id: String::new(),
                 client_ip: String::new(),
@@ -434,7 +434,7 @@ impl AgentHandlerV2 for SoapSecurityAgent {
 
     /// Return metrics report for the agent.
     fn metrics_report(&self) -> Option<MetricsReport> {
-        use sentinel_agent_protocol::v2::CounterMetric;
+        use zentinel_agent_protocol::v2::CounterMetric;
 
         let mut report = MetricsReport::new("soap-security", 10_000);
 

@@ -1,18 +1,18 @@
 [package]
-name = "sentinel-agent-soap"
+name = "zentinel-agent-soap"
 version = "0.2.0"
 edition = "2021"
 authors = ["Raskell <hello@raskell.io>"]
-description = "SOAP security agent for Sentinel proxy - envelope validation, WS-Security, and operation control"
+description = "SOAP security agent for Zentinel proxy - envelope validation, WS-Security, and operation control"
 license = "Apache-2.0"
-repository = "https://github.com/raskell-io/sentinel-agent-soap"
-keywords = ["sentinel", "proxy", "agent", "soap", "xml"]
+repository = "https://github.com/zentinelproxy/zentinel-agent-soap"
+keywords = ["zentinel", "proxy", "agent", "soap", "xml"]
 categories = ["network-programming", "web-programming"]
 readme = "README.md"
 
 [dependencies]
-# Sentinel Agent Protocol (v2)
-sentinel-agent-protocol = "0.3"
+# Zentinel Agent Protocol (v2)
+zentinel-agent-protocol = "0.3"
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
@@ -51,9 +51,9 @@ tokio-test = "0.4"
 tempfile = "3"
 
 [[bin]]
-name = "sentinel-agent-soap"
+name = "zentinel-agent-soap"
 path = "src/main.rs"
 
 [lib]
-name = "sentinel_agent_soap"
+name = "zentinel_agent_soap"
 path = "src/lib.rs"

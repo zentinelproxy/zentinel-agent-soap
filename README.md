@@ -1,16 +1,16 @@
-# sentinel-agent-soap
+# zentinel-agent-soap
 
-SOAP/XML security agent for Sentinel reverse proxy - XML validation, WSDL enforcement, and XXE protection.
+SOAP/XML security agent for Zentinel reverse proxy - XML validation, WSDL enforcement, and XXE protection.
 
 ## Installation
 
 ```bash
-cargo install sentinel-agent-soap
+cargo install zentinel-agent-soap
 ```
 
 ## Documentation
 
-See [sentinel.raskell.io/docs/agents/soap](https://sentinel.raskell.io/docs/agents/soap)
+See [zentinelproxy.io/docs/agents/soap](https://zentinelproxy.io/docs/agents/soap)
 
 ## License
 

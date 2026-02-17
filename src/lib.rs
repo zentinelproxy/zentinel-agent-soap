@@ -1,4 +1,4 @@
-//! SOAP Security Agent for Sentinel
+//! SOAP Security Agent for Zentinel
 //!
 //! Provides SOAP-specific security controls including envelope validation,
 //! WS-Security verification, operation control, and XXE prevention.
@@ -14,7 +14,7 @@
 //!
 //! # Protocol v2 Support
 //!
-//! This agent implements the Sentinel Agent Protocol v2, providing:
+//! This agent implements the Zentinel Agent Protocol v2, providing:
 //! - Capability negotiation
 //! - Health reporting
 //! - Metrics export
@@ -24,8 +24,8 @@
 //! # Example
 //!
 //! ```ignore
-//! use sentinel_agent_soap::SoapSecurityAgent;
-//! use sentinel_agent_protocol::v2::GrpcAgentServerV2;
+//! use zentinel_agent_soap::SoapSecurityAgent;
+//! use zentinel_agent_protocol::v2::GrpcAgentServerV2;
 //!
 //! let agent = SoapSecurityAgent::new(config);
 //! let server = GrpcAgentServerV2::new("soap", Box::new(agent));

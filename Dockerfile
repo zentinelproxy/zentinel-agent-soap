@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 
-# Sentinel SOAP Agent Container Image
+# Zentinel SOAP Agent Container Image
 #
 # Targets:
 #   - prebuilt: For CI with pre-built binaries
@@ -10,16 +10,16 @@
 ################################################################################
 FROM gcr.io/distroless/cc-debian12:nonroot AS prebuilt
 
-COPY sentinel-agent-soap /sentinel-agent-soap
+COPY zentinel-agent-soap /zentinel-agent-soap
 
-LABEL org.opencontainers.image.title="Sentinel SOAP Agent" \
-      org.opencontainers.image.description="Sentinel SOAP Agent for Sentinel reverse proxy" \
+LABEL org.opencontainers.image.title="Zentinel SOAP Agent" \
+      org.opencontainers.image.description="Zentinel SOAP Agent for Zentinel reverse proxy" \
       org.opencontainers.image.vendor="Raskell" \
-      org.opencontainers.image.source="https://github.com/raskell-io/sentinel-agent-soap"
+      org.opencontainers.image.source="https://github.com/zentinelproxy/zentinel-agent-soap"
 
-ENV RUST_LOG=info,sentinel_agent_soap=debug \
-    SOCKET_PATH=/var/run/sentinel/soap.sock
+ENV RUST_LOG=info,zentinel_agent_soap=debug \
+    SOCKET_PATH=/var/run/zentinel/soap.sock
 
 USER nonroot:nonroot
 
-ENTRYPOINT ["/sentinel-agent-soap"]
+ENTRYPOINT ["/zentinel-agent-soap"]

@@ -1580,7 +1580,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sentinel-agent-protocol"
+name = "zentinel-agent-protocol"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e46a9b9498c2f970d45c5178a342ccbd164fe6e2ee57732da8fd5d677d127306"
@@ -1596,7 +1596,7 @@ dependencies = [
  "parking_lot",
  "prost",
  "reqwest",
- "sentinel-common",
+ "zentinel-common",
  "serde",
  "serde_bytes",
  "serde_json",
@@ -1612,7 +1612,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sentinel-agent-soap"
+name = "zentinel-agent-soap"
 version = "0.2.0"
 dependencies = [
  "anyhow",
@@ -1622,7 +1622,7 @@ dependencies = [
  "clap",
  "glob",
  "quick-xml",
- "sentinel-agent-protocol",
+ "zentinel-agent-protocol",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1635,7 +1635,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sentinel-common"
+name = "zentinel-common"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a1dd0a9c6f61fb38322fa509f7bdf136e295ede95ba3bc7b0e8f908094cfdcb8"

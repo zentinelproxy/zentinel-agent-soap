@@ -1,19 +1,19 @@
-//! Sentinel SOAP Security Agent binary.
+//! Zentinel SOAP Security Agent binary.
 //!
-//! Run with: `sentinel-agent-soap --config config.yaml`
+//! Run with: `zentinel-agent-soap --config config.yaml`
 //!
 //! Supports both UDS (Unix Domain Socket) and gRPC transports.
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use sentinel_agent_protocol::v2::GrpcAgentServerV2;
-use sentinel_agent_soap::{SoapSecurityAgent, SoapSecurityConfig};
+use zentinel_agent_protocol::v2::GrpcAgentServerV2;
+use zentinel_agent_soap::{SoapSecurityAgent, SoapSecurityConfig};
 use std::path::PathBuf;
 use tokio::signal;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-/// SOAP Security Agent for Sentinel proxy.
+/// SOAP Security Agent for Zentinel proxy.
 ///
 /// Validates SOAP messages for security concerns including envelope structure,
 /// WS-Security headers, operation control, and XXE prevention.
@@ -32,7 +32,7 @@ struct Args {
     config: PathBuf,
 
     /// Unix socket path for UDS transport (v1 compatibility)
-    #[arg(short, long, default_value = "/tmp/sentinel-soap.sock")]
+    #[arg(short, long, default_value = "/tmp/zentinel-soap.sock")]
     socket: PathBuf,
 
     /// gRPC server address for v2 transport (e.g., "[::1]:50051" or "0.0.0.0:50051")
@@ -60,7 +60,7 @@ async fn main() -> Result<()> {
     tracing::subscriber::set_global_default(subscriber)
         .context("Failed to set tracing subscriber")?;
 
-    info!("Starting Sentinel SOAP Security Agent v{}", env!("CARGO_PKG_VERSION"));
+    info!("Starting Zentinel SOAP Security Agent v{}", env!("CARGO_PKG_VERSION"));
     info!("Config file: {}", args.config.display());
 
     // Load configuration
@@ -115,7 +115,7 @@ async fn main() -> Result<()> {
         // For now, we only support gRPC in v2
         anyhow::bail!(
             "UDS transport not yet implemented for v2. Please use --grpc-address option.\n\
-             Example: sentinel-agent-soap --grpc-address '[::1]:50051'"
+             Example: zentinel-agent-soap --grpc-address '[::1]:50051'"
         );
     }
 

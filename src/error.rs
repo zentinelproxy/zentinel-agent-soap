@@ -185,9 +185,9 @@ fn soap_11_fault(violations: &[Violation]) -> String {
       <faultcode>soap:Client</faultcode>
       <faultstring>{}</faultstring>
       <detail>
-        <sentinel:violations xmlns:sentinel="urn:sentinel:soap:security">
+        <zentinel:violations xmlns:zentinel="urn:zentinel:soap:security">
 {}
-        </sentinel:violations>
+        </zentinel:violations>
       </detail>
     </soap:Fault>
   </soap:Body>
@@ -196,7 +196,7 @@ fn soap_11_fault(violations: &[Violation]) -> String {
         violations
             .iter()
             .map(|v| format!(
-                "          <sentinel:violation code=\"{}\">{}</sentinel:violation>",
+                "          <zentinel:violation code=\"{}\">{}</zentinel:violation>",
                 v.code.as_str(),
                 xml_escape(&v.message)
             ))
@@ -224,9 +224,9 @@ fn soap_12_fault(violations: &[Violation]) -> String {
         <soap:Text xml:lang="en">{}</soap:Text>
       </soap:Reason>
       <soap:Detail>
-        <sentinel:violations xmlns:sentinel="urn:sentinel:soap:security">
+        <zentinel:violations xmlns:zentinel="urn:zentinel:soap:security">
 {}
-        </sentinel:violations>
+        </zentinel:violations>
       </soap:Detail>
     </soap:Fault>
   </soap:Body>
@@ -235,7 +235,7 @@ fn soap_12_fault(violations: &[Violation]) -> String {
         violations
             .iter()
             .map(|v| format!(
-                "          <sentinel:violation code=\"{}\">{}</sentinel:violation>",
+                "          <zentinel:violation code=\"{}\">{}</zentinel:violation>",
                 v.code.as_str(),
                 xml_escape(&v.message)
             ))
