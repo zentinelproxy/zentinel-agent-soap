@@ -51,7 +51,7 @@ tokio-test = "0.4"
 tempfile = "3"
 
 [[bin]]
-name = "zentinel-agent-soap"
+name = "zentinel-soap-agent"
 path = "src/main.rs"
 
 [lib]

@@ -10,7 +10,7 @@
 ################################################################################
 FROM gcr.io/distroless/cc-debian12:nonroot AS prebuilt
 
-COPY zentinel-agent-soap /zentinel-agent-soap
+COPY zentinel-soap-agent /zentinel-soap-agent
 
 LABEL org.opencontainers.image.title="Zentinel SOAP Agent" \
       org.opencontainers.image.description="Zentinel SOAP Agent for Zentinel reverse proxy" \
@@ -22,4 +22,4 @@ ENV RUST_LOG=info,zentinel_agent_soap=debug \
 
 USER nonroot:nonroot
 
-ENTRYPOINT ["/zentinel-agent-soap"]
+ENTRYPOINT ["/zentinel-soap-agent"]
