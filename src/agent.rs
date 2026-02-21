@@ -475,10 +475,16 @@ impl AgentHandlerV2 for SoapSecurityAgent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{
+        BodyValidationConfig, EnvelopeConfig, OperationMode, OperationsConfig,
+        SettingsConfig, WsSecurityConfig, XxePreventionConfig,
+    };
+    use std::collections::HashMap;
+    use zentinel_agent_protocol::RequestMetadata;
 
     fn test_config() -> SoapSecurityConfig {
         SoapSecurityConfig {
-            settings: crate::config::SettingsConfig {
+            settings: SettingsConfig {
                 max_body_size: 1_048_576,
                 debug_headers: true,
                 fail_action: FailAction::Block,
@@ -488,14 +494,49 @@ mod tests {
                     "application/xml".to_string(),
                 ],
             },
-            envelope: crate::config::EnvelopeConfig::default(),
-            ws_security: crate::config::WsSecurityConfig::default(),
-            operations: crate::config::OperationsConfig::default(),
-            xxe_prevention: crate::config::XxePreventionConfig::default(),
-            body_validation: crate::config::BodyValidationConfig::default(),
+            envelope: EnvelopeConfig::default(),
+            ws_security: WsSecurityConfig::default(),
+            operations: OperationsConfig::default(),
+            xxe_prevention: XxePreventionConfig::default(),
+            body_validation: BodyValidationConfig::default(),
             version: "1".to_string(),
         }
     }
+
+    fn make_request_event(
+        content_type: Option<&str>,
+        soap_action: Option<&str>,
+    ) -> RequestHeadersEvent {
+        let mut headers = HashMap::new();
+        if let Some(ct) = content_type {
+            headers.insert("content-type".to_string(), vec![ct.to_string()]);
+        }
+        if let Some(sa) = soap_action {
+            headers.insert("soapaction".to_string(), vec![sa.to_string()]);
+        }
+
+        RequestHeadersEvent {
+            metadata: RequestMetadata {
+                correlation_id: "test-corr-123".to_string(),
+                request_id: "test-req-456".to_string(),
+                client_ip: "127.0.0.1".to_string(),
+                client_port: 12345,
+                server_name: None,
+                protocol: "HTTP/1.1".to_string(),
+                tls_version: None,
+                tls_cipher: None,
+                route_id: None,
+                upstream_id: None,
+                timestamp: "2025-01-01T00:00:00Z".to_string(),
+                traceparent: None,
+            },
+            method: "POST".to_string(),
+            uri: "/soap/service".to_string(),
+            headers,
+        }
+    }
+
+    // --- Agent creation ---
 
     #[test]
     fn test_agent_creation() {
@@ -504,6 +545,8 @@ mod tests {
         assert_eq!(caps.agent_id, "soap-security");
         assert_eq!(caps.name, "SOAP Security Agent");
     }
+
+    // --- Content type validation ---
 
     #[test]
     fn test_valid_content_type() {
@@ -516,6 +559,24 @@ mod tests {
     }
 
     #[test]
+    fn test_content_type_application_xml() {
+        let agent = SoapSecurityAgent::new(test_config());
+        assert!(agent.is_valid_content_type(Some("application/xml")));
+        assert!(agent.is_valid_content_type(Some("Application/XML; charset=utf-8")));
+    }
+
+    #[test]
+    fn test_content_type_not_soap() {
+        let agent = SoapSecurityAgent::new(test_config());
+        assert!(!agent.is_valid_content_type(Some("text/html")));
+        assert!(!agent.is_valid_content_type(Some("text/plain")));
+        assert!(!agent.is_valid_content_type(Some("multipart/form-data")));
+        assert!(!agent.is_valid_content_type(Some("")));
+    }
+
+    // --- Capabilities ---
+
+    #[test]
     fn test_capabilities() {
         let agent = SoapSecurityAgent::new(test_config());
         let caps = agent.capabilities();
@@ -523,10 +584,51 @@ mod tests {
         assert_eq!(caps.protocol_version, 2);
         assert!(caps.supported_events.contains(&EventType::RequestHeaders));
         assert!(caps.supported_events.contains(&EventType::RequestBodyChunk));
+        assert!(caps.supported_events.contains(&EventType::Configure));
+        assert_eq!(caps.supported_events.len(), 3);
         assert!(caps.features.streaming_body);
         assert!(caps.features.metrics_export);
         assert!(caps.features.health_reporting);
+        assert!(caps.features.config_push);
+        assert!(caps.features.cancellation);
+        assert!(!caps.features.websocket);
+        assert!(!caps.features.guardrails);
+        assert!(!caps.features.flow_control);
+        assert_eq!(caps.features.concurrent_requests, 100);
     }
+
+    #[test]
+    fn test_capabilities_limits() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let caps = agent.capabilities();
+
+        assert_eq!(caps.limits.max_body_size, 1_048_576);
+        assert_eq!(caps.limits.max_concurrency, 100);
+        assert_eq!(caps.limits.preferred_chunk_size, 64 * 1024);
+        assert!(caps.limits.max_memory.is_none());
+        assert_eq!(caps.limits.max_processing_time_ms, Some(5000));
+    }
+
+    #[test]
+    fn test_capabilities_health_config() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let caps = agent.capabilities();
+
+        assert_eq!(caps.health.report_interval_ms, 10_000);
+        assert!(caps.health.include_load_metrics);
+        assert!(!caps.health.include_resource_metrics);
+    }
+
+    #[test]
+    fn test_capabilities_max_body_size_reflects_config() {
+        let mut config = test_config();
+        config.settings.max_body_size = 5_000_000;
+        let agent = SoapSecurityAgent::new(config);
+        let caps = agent.capabilities();
+        assert_eq!(caps.limits.max_body_size, 5_000_000);
+    }
+
+    // --- Health status ---
 
     #[test]
     fn test_health_status() {
@@ -534,6 +636,8 @@ mod tests {
         let health = agent.health_status();
         assert!(health.is_healthy());
     }
+
+    // --- Metrics ---
 
     #[test]
     fn test_metrics_report() {
@@ -543,5 +647,502 @@ mod tests {
         let report = report.unwrap();
         assert_eq!(report.agent_id, "soap-security");
         assert_eq!(report.counters.len(), 2);
+    }
+
+    #[test]
+    fn test_metrics_initial_values() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let report = agent.metrics_report().unwrap();
+
+        // Initially, all counters should be 0
+        for counter in &report.counters {
+            assert_eq!(counter.value, 0);
+        }
+    }
+
+    #[test]
+    fn test_metrics_counter_names() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let report = agent.metrics_report().unwrap();
+
+        let names: Vec<&str> = report.counters.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"soap_requests_processed_total"));
+        assert!(names.contains(&"soap_requests_blocked_total"));
+    }
+
+    // --- process_soap_request: non-SOAP pass-through ---
+
+    #[test]
+    fn test_non_soap_content_type_passes_through() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let event = make_request_event(Some("application/json"), None);
+        let body = b"not soap";
+
+        let response = agent.process_soap_request(&event, Some(body));
+        assert!(matches!(response.decision, Decision::Allow));
+    }
+
+    #[test]
+    fn test_no_content_type_passes_through() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let event = make_request_event(None, None);
+        let body = b"some body";
+
+        let response = agent.process_soap_request(&event, Some(body));
+        assert!(matches!(response.decision, Decision::Allow));
+    }
+
+    #[test]
+    fn test_no_body_passes_through() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let event = make_request_event(Some("text/xml"), None);
+
+        let response = agent.process_soap_request(&event, None);
+        assert!(matches!(response.decision, Decision::Allow));
+    }
+
+    // --- process_soap_request: body too large ---
+
+    #[test]
+    fn test_body_too_large_blocked() {
+        let mut config = test_config();
+        config.settings.max_body_size = 100;
+        config.settings.fail_action = FailAction::Block;
+
+        let agent = SoapSecurityAgent::new(config);
+        let event = make_request_event(Some("text/xml"), None);
+        let body = vec![b'x'; 200];
+
+        let response = agent.process_soap_request(&event, Some(&body));
+        assert!(matches!(response.decision, Decision::Block { .. }));
+    }
+
+    #[test]
+    fn test_body_too_large_allowed_when_fail_action_allow() {
+        let mut config = test_config();
+        config.settings.max_body_size = 100;
+        config.settings.fail_action = FailAction::Allow;
+
+        let agent = SoapSecurityAgent::new(config);
+        let event = make_request_event(Some("text/xml"), None);
+        let body = vec![b'x'; 200];
+
+        let response = agent.process_soap_request(&event, Some(&body));
+        assert!(matches!(response.decision, Decision::Allow));
+    }
+
+    // --- process_soap_request: valid SOAP ---
+
+    #[test]
+    fn test_valid_soap_request_allowed() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let event = make_request_event(Some("text/xml"), None);
+        let body = br#"<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <m:GetUser xmlns:m="http://example.org/users">
+      <m:UserId>123</m:UserId>
+    </m:GetUser>
+  </soap:Body>
+</soap:Envelope>"#;
+
+        let response = agent.process_soap_request(&event, Some(body));
+        assert!(matches!(response.decision, Decision::Allow));
+
+        // Should have X-SOAP-Validated header
+        assert!(response.request_headers.iter().any(|h| matches!(
+            h,
+            HeaderOp::Set { name, value } if name == "X-SOAP-Validated" && value == "true"
+        )));
+
+        // Should have X-SOAP-Operation header
+        assert!(response.request_headers.iter().any(|h| matches!(
+            h,
+            HeaderOp::Set { name, value } if name == "X-SOAP-Operation" && value == "GetUser"
+        )));
+    }
+
+    #[test]
+    fn test_valid_soap_12_request_allowed() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let event = make_request_event(Some("application/soap+xml"), None);
+        let body = br#"<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+  <soap:Body>
+    <m:ListUsers xmlns:m="http://example.org/users"/>
+  </soap:Body>
+</soap:Envelope>"#;
+
+        let response = agent.process_soap_request(&event, Some(body));
+        assert!(matches!(response.decision, Decision::Allow));
+    }
+
+    // --- process_soap_request: debug headers ---
+
+    #[test]
+    fn test_debug_headers_on_allow_response() {
+        let mut config = test_config();
+        config.settings.debug_headers = true;
+
+        let agent = SoapSecurityAgent::new(config);
+        let event = make_request_event(Some("text/xml"), None);
+        let body = br#"<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <GetUser xmlns="http://example.org/users"/>
+  </soap:Body>
+</soap:Envelope>"#;
+
+        let response = agent.process_soap_request(&event, Some(body));
+        assert!(matches!(response.decision, Decision::Allow));
+
+        // Debug headers should be present
+        assert!(response.response_headers.iter().any(|h| matches!(
+            h,
+            HeaderOp::Set { name, .. } if name == "X-SOAP-Body-Depth"
+        )));
+        assert!(response.response_headers.iter().any(|h| matches!(
+            h,
+            HeaderOp::Set { name, .. } if name == "X-SOAP-Element-Count"
+        )));
+        assert!(response.response_headers.iter().any(|h| matches!(
+            h,
+            HeaderOp::Set { name, .. } if name == "X-SOAP-Max-Text-Length"
+        )));
+    }
+
+    #[test]
+    fn test_debug_headers_disabled() {
+        let mut config = test_config();
+        config.settings.debug_headers = false;
+
+        let agent = SoapSecurityAgent::new(config);
+        let event = make_request_event(Some("text/xml"), None);
+        let body = br#"<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <GetUser xmlns="http://example.org/users"/>
+  </soap:Body>
+</soap:Envelope>"#;
+
+        let response = agent.process_soap_request(&event, Some(body));
+        assert!(matches!(response.decision, Decision::Allow));
+
+        // Debug headers should NOT be present
+        assert!(!response.response_headers.iter().any(|h| matches!(
+            h,
+            HeaderOp::Set { name, .. } if name == "X-SOAP-Body-Depth"
+        )));
+    }
+
+    // --- process_soap_request: malformed XML ---
+
+    #[test]
+    fn test_malformed_xml_blocked() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let event = make_request_event(Some("text/xml"), None);
+        let body = b"<this is not valid xml>><<";
+
+        let response = agent.process_soap_request(&event, Some(body));
+        assert!(matches!(response.decision, Decision::Block { .. }));
+    }
+
+    #[test]
+    fn test_malformed_xml_allowed_with_fail_action_allow() {
+        let mut config = test_config();
+        config.settings.fail_action = FailAction::Allow;
+
+        let agent = SoapSecurityAgent::new(config);
+        let event = make_request_event(Some("text/xml"), None);
+        let body = b"<this is not valid xml>><<";
+
+        let response = agent.process_soap_request(&event, Some(body));
+        assert!(matches!(response.decision, Decision::Allow));
+    }
+
+    // --- process_soap_request: XXE attack ---
+
+    #[test]
+    fn test_xxe_attack_blocked() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let event = make_request_event(Some("text/xml"), None);
+        let body = br#"<?xml version="1.0"?>
+<!DOCTYPE foo [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>&xxe;</soap:Body>
+</soap:Envelope>"#;
+
+        let response = agent.process_soap_request(&event, Some(body));
+        assert!(matches!(response.decision, Decision::Block { .. }));
+    }
+
+    // --- process_soap_request: operation control ---
+
+    #[test]
+    fn test_blocked_operation_returns_fault() {
+        let mut config = test_config();
+        config.operations.enabled = true;
+        config.operations.mode = OperationMode::Allowlist;
+        config.operations.actions = vec!["GetUser".to_string()];
+
+        let agent = SoapSecurityAgent::new(config);
+        let event = make_request_event(Some("text/xml"), None);
+        let body = br#"<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <DeleteUser xmlns="http://example.org/users"/>
+  </soap:Body>
+</soap:Envelope>"#;
+
+        let response = agent.process_soap_request(&event, Some(body));
+        assert!(matches!(response.decision, Decision::Block { .. }));
+
+        if let Decision::Block { status, body, headers } = &response.decision {
+            assert_eq!(*status, 500);
+            assert!(body.as_ref().unwrap().contains("OPERATION_NOT_ALLOWED"));
+            // Content-Type should be text/xml for SOAP 1.1
+            let ct = headers.as_ref().unwrap().get("Content-Type").unwrap();
+            assert!(ct.contains("text/xml"));
+        }
+    }
+
+    #[test]
+    fn test_allowed_operation_passes() {
+        let mut config = test_config();
+        config.operations.enabled = true;
+        config.operations.mode = OperationMode::Allowlist;
+        config.operations.actions = vec!["GetUser".to_string()];
+
+        let agent = SoapSecurityAgent::new(config);
+        let event = make_request_event(Some("text/xml"), None);
+        let body = br#"<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <GetUser xmlns="http://example.org/users"/>
+  </soap:Body>
+</soap:Envelope>"#;
+
+        let response = agent.process_soap_request(&event, Some(body));
+        assert!(matches!(response.decision, Decision::Allow));
+    }
+
+    // --- process_soap_request: violations with fail_action=allow ---
+
+    #[test]
+    fn test_violations_with_allow_mode_pass_through() {
+        let mut config = test_config();
+        config.settings.fail_action = FailAction::Allow;
+        config.operations.enabled = true;
+        config.operations.mode = OperationMode::Allowlist;
+        config.operations.actions = vec!["SafeOnly".to_string()];
+
+        let agent = SoapSecurityAgent::new(config);
+        let event = make_request_event(Some("text/xml"), None);
+        let body = br#"<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <DangerousOp xmlns="http://example.org/danger"/>
+  </soap:Body>
+</soap:Envelope>"#;
+
+        let response = agent.process_soap_request(&event, Some(body));
+        // Should be allowed even though operation is not in the allowlist
+        assert!(matches!(response.decision, Decision::Allow));
+    }
+
+    // --- process_soap_request: SOAP 1.2 block response content type ---
+
+    #[test]
+    fn test_soap_12_block_response_content_type() {
+        let mut config = test_config();
+        config.envelope.allowed_versions = vec![crate::config::SoapVersion::Soap11]; // Reject 1.2
+
+        let agent = SoapSecurityAgent::new(config);
+        let event = make_request_event(Some("application/soap+xml"), None);
+        let body = br#"<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://www.w3.org/2003/05/soap-envelope">
+  <soap:Body>
+    <GetUser xmlns="http://example.org/users"/>
+  </soap:Body>
+</soap:Envelope>"#;
+
+        let response = agent.process_soap_request(&event, Some(body));
+        assert!(matches!(response.decision, Decision::Block { .. }));
+
+        if let Decision::Block { headers, .. } = &response.decision {
+            let ct = headers.as_ref().unwrap().get("Content-Type").unwrap();
+            // SOAP 1.2 block response should use application/soap+xml
+            assert!(ct.contains("application/soap+xml"));
+        }
+    }
+
+    // --- process_soap_request: SOAPAction header ---
+
+    #[test]
+    fn test_soap_action_header_used_in_validation() {
+        let mut config = test_config();
+        config.operations.enabled = true;
+        config.operations.validate_action_match = true;
+
+        let agent = SoapSecurityAgent::new(config);
+        let event = make_request_event(Some("text/xml"), Some("\"GetUser\""));
+        let body = br#"<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <GetUser xmlns="http://example.org/users"/>
+  </soap:Body>
+</soap:Envelope>"#;
+
+        let response = agent.process_soap_request(&event, Some(body));
+        // SOAPAction matches body, should pass
+        assert!(matches!(response.decision, Decision::Allow));
+    }
+
+    #[test]
+    fn test_soap_action_mismatch_blocked() {
+        let mut config = test_config();
+        config.operations.enabled = true;
+        config.operations.validate_action_match = true;
+
+        let agent = SoapSecurityAgent::new(config);
+        let event = make_request_event(Some("text/xml"), Some("\"DeleteUser\""));
+        let body = br#"<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <GetUser xmlns="http://example.org/users"/>
+  </soap:Body>
+</soap:Envelope>"#;
+
+        let response = agent.process_soap_request(&event, Some(body));
+        assert!(matches!(response.decision, Decision::Block { .. }));
+    }
+
+    // --- process_soap_request: identity header ---
+
+    #[test]
+    fn test_identity_header_not_set_when_ws_security_disabled() {
+        let mut config = test_config();
+        config.ws_security.enabled = false;
+        config.ws_security.identity_header = Some("X-Authenticated-User".to_string());
+
+        let agent = SoapSecurityAgent::new(config);
+        let event = make_request_event(Some("text/xml"), None);
+        let body = br#"<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <GetUser xmlns="http://example.org/users"/>
+  </soap:Body>
+</soap:Envelope>"#;
+
+        let response = agent.process_soap_request(&event, Some(body));
+        assert!(matches!(response.decision, Decision::Allow));
+
+        // Identity header should NOT be present (WS-Security is disabled)
+        assert!(!response.request_headers.iter().any(|h| matches!(
+            h,
+            HeaderOp::Set { name, .. } if name == "X-Authenticated-User"
+        )));
+    }
+
+    // --- process_soap_request: empty body ---
+
+    #[test]
+    fn test_empty_soap_body() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let event = make_request_event(Some("text/xml"), None);
+        let body = br#"<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+  </soap:Body>
+</soap:Envelope>"#;
+
+        let response = agent.process_soap_request(&event, Some(body));
+        // Valid envelope, just empty body - should be allowed
+        assert!(matches!(response.decision, Decision::Allow));
+    }
+
+    // --- Async handler tests ---
+
+    #[tokio::test]
+    async fn test_on_request_headers_soap_needs_body() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let event = make_request_event(Some("text/xml"), None);
+
+        let response = agent.on_request_headers(event).await;
+        // SOAP requests should signal they need more data (the body).
+        // needs_more_data() returns Decision::Allow with needs_more=true.
+        assert!(matches!(response.decision, Decision::Allow));
+        assert!(response.needs_more);
+    }
+
+    #[tokio::test]
+    async fn test_on_request_headers_non_soap_allows() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let event = make_request_event(Some("application/json"), None);
+
+        let response = agent.on_request_headers(event).await;
+        assert!(matches!(response.decision, Decision::Allow));
+    }
+
+    #[tokio::test]
+    async fn test_on_request_headers_no_content_type_allows() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let event = make_request_event(None, None);
+
+        let response = agent.on_request_headers(event).await;
+        assert!(matches!(response.decision, Decision::Allow));
+    }
+
+    #[tokio::test]
+    async fn test_on_configure_returns_true() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let config_json = serde_json::json!({"envelope": {"max_body_depth": 5}});
+
+        let accepted = agent.on_configure(config_json, Some("v2".to_string())).await;
+        assert!(accepted);
+    }
+
+    #[tokio::test]
+    async fn test_on_configure_no_version() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let config_json = serde_json::json!({});
+
+        let accepted = agent.on_configure(config_json, None).await;
+        assert!(accepted);
+    }
+
+    #[tokio::test]
+    async fn test_on_shutdown() {
+        let agent = SoapSecurityAgent::new(test_config());
+        // Should not panic -- test that the method completes without error
+        agent.on_shutdown(ShutdownReason::Graceful, 5000).await;
+    }
+
+    #[tokio::test]
+    async fn test_on_drain() {
+        let agent = SoapSecurityAgent::new(test_config());
+        // Should not panic -- test that the method completes without error
+        agent.on_drain(10000, DrainReason::Maintenance).await;
+    }
+
+    // --- Atomic counter tracking ---
+
+    #[test]
+    fn test_request_counter_increments() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let event = make_request_event(Some("text/xml"), None);
+        let body = br#"<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <GetUser xmlns="http://example.org/users"/>
+  </soap:Body>
+</soap:Envelope>"#;
+
+        // Process a request via process_soap_request (doesn't touch counters directly)
+        let _response = agent.process_soap_request(&event, Some(body));
+
+        // The process_soap_request doesn't increment counters, only the async handlers do
+        // So counters should still be 0
+        assert_eq!(agent.requests_processed.load(std::sync::atomic::Ordering::Relaxed), 0);
     }
 }
