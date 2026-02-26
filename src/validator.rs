@@ -188,17 +188,14 @@ impl SoapValidator {
                 Some(token) => {
                     // Check password type
                     if let Some(ref pw_type) = token.password_type {
-                        let allowed = config
-                            .allowed_password_types
-                            .iter()
-                            .any(|t| match t {
-                                crate::config::PasswordType::PasswordText => {
-                                    pw_type.contains("PasswordText")
-                                }
-                                crate::config::PasswordType::PasswordDigest => {
-                                    pw_type.contains("PasswordDigest")
-                                }
-                            });
+                        let allowed = config.allowed_password_types.iter().any(|t| match t {
+                            crate::config::PasswordType::PasswordText => {
+                                pw_type.contains("PasswordText")
+                            }
+                            crate::config::PasswordType::PasswordDigest => {
+                                pw_type.contains("PasswordDigest")
+                            }
+                        });
 
                         if !allowed {
                             result.add_violation(Violation::new(
@@ -244,7 +241,8 @@ impl SoapValidator {
 
         let now = Utc::now();
         let age = now.signed_duration_since(created_time);
-        let max_age = chrono::Duration::seconds(self.config.ws_security.max_timestamp_age_secs as i64);
+        let max_age =
+            chrono::Duration::seconds(self.config.ws_security.max_timestamp_age_secs as i64);
 
         if age > max_age {
             return Err(Violation::new(
@@ -437,10 +435,7 @@ impl SoapValidator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{
-        BodyValidationConfig, EnvelopeConfig, OperationsConfig, PasswordType,
-        WsSecurityConfig, XxePreventionConfig,
-    };
+    use crate::config::EnvelopeConfig;
     use crate::parser::parse_soap_envelope;
 
     fn test_config() -> SoapSecurityConfig {
@@ -645,7 +640,10 @@ mod tests {
         let result = validator.validate(&envelope, None);
 
         // No envelope violations because validation is disabled
-        assert!(!result.violations.iter().any(|v| v.code == ViolationCode::BodyDepthExceeded));
+        assert!(!result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::BodyDepthExceeded));
     }
 
     // --- Operation control ---
@@ -669,7 +667,10 @@ mod tests {
         let result = validator.validate(&envelope, None);
 
         assert!(result.has_violations());
-        assert_eq!(result.violations[0].code, ViolationCode::OperationNotAllowed);
+        assert_eq!(
+            result.violations[0].code,
+            ViolationCode::OperationNotAllowed
+        );
     }
 
     #[test]
@@ -733,7 +734,10 @@ mod tests {
         let result = validator.validate(&envelope, None);
 
         assert!(result.has_violations());
-        assert_eq!(result.violations[0].code, ViolationCode::OperationNotAllowed);
+        assert_eq!(
+            result.violations[0].code,
+            ViolationCode::OperationNotAllowed
+        );
     }
 
     #[test]
@@ -837,7 +841,10 @@ mod tests {
         let result = validator.validate(&envelope, Some("DeleteUser"));
 
         assert!(result.has_violations());
-        assert!(result.violations.iter().any(|v| v.code == ViolationCode::SoapActionMismatch));
+        assert!(result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::SoapActionMismatch));
     }
 
     #[test]
@@ -900,7 +907,10 @@ mod tests {
         let result = validator.validate(&envelope, None);
 
         // Should pass since operations control is disabled
-        assert!(!result.violations.iter().any(|v| v.code == ViolationCode::OperationNotAllowed));
+        assert!(!result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::OperationNotAllowed));
     }
 
     // --- WS-Security validation ---
@@ -923,7 +933,10 @@ mod tests {
         let result = validator.validate(&envelope, None);
 
         assert!(result.has_violations());
-        assert!(result.violations.iter().any(|v| v.code == ViolationCode::MissingSecurityHeader));
+        assert!(result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::MissingSecurityHeader));
     }
 
     #[test]
@@ -943,7 +956,10 @@ mod tests {
         let validator = SoapValidator::new(config);
         let result = validator.validate(&envelope, None);
 
-        assert!(!result.violations.iter().any(|v| v.code == ViolationCode::MissingSecurityHeader));
+        assert!(!result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::MissingSecurityHeader));
     }
 
     #[test]
@@ -971,7 +987,10 @@ mod tests {
         let result = validator.validate(&envelope, None);
 
         assert!(result.has_violations());
-        assert!(result.violations.iter().any(|v| v.code == ViolationCode::InvalidTimestamp));
+        assert!(result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::InvalidTimestamp));
     }
 
     #[test]
@@ -999,7 +1018,10 @@ mod tests {
         let result = validator.validate(&envelope, None);
 
         assert!(result.has_violations());
-        assert!(result.violations.iter().any(|v| v.code == ViolationCode::MissingUsernameToken));
+        assert!(result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::MissingUsernameToken));
     }
 
     #[test]
@@ -1027,7 +1049,10 @@ mod tests {
         let result = validator.validate(&envelope, None);
 
         assert!(result.has_violations());
-        assert!(result.violations.iter().any(|v| v.code == ViolationCode::MissingSamlAssertion));
+        assert!(result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::MissingSamlAssertion));
     }
 
     #[test]
@@ -1160,7 +1185,10 @@ mod tests {
         let result = validator.validate(&envelope, None);
 
         assert!(result.has_violations());
-        assert!(result.violations.iter().any(|v| v.code == ViolationCode::TooManyElements));
+        assert!(result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::TooManyElements));
     }
 
     #[test]
@@ -1187,7 +1215,10 @@ mod tests {
         let result = validator.validate(&envelope, None);
 
         assert!(result.has_violations());
-        assert!(result.violations.iter().any(|v| v.code == ViolationCode::TextTooLong));
+        assert!(result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::TextTooLong));
     }
 
     #[test]
@@ -1210,7 +1241,10 @@ mod tests {
         let result = validator.validate(&envelope, None);
 
         assert!(result.has_violations());
-        assert!(result.violations.iter().any(|v| v.code == ViolationCode::CdataNotAllowed));
+        assert!(result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::CdataNotAllowed));
     }
 
     #[test]
@@ -1230,7 +1264,10 @@ mod tests {
         let validator = SoapValidator::new(config);
         let result = validator.validate(&envelope, None);
 
-        assert!(!result.violations.iter().any(|v| v.code == ViolationCode::CdataNotAllowed));
+        assert!(!result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::CdataNotAllowed));
     }
 
     #[test]
@@ -1252,7 +1289,10 @@ mod tests {
         let result = validator.validate(&envelope, None);
 
         assert!(result.has_violations());
-        assert!(result.violations.iter().any(|v| v.code == ViolationCode::CommentNotAllowed));
+        assert!(result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::CommentNotAllowed));
     }
 
     #[test]
@@ -1271,7 +1311,10 @@ mod tests {
         let validator = SoapValidator::new(config);
         let result = validator.validate(&envelope, None);
 
-        assert!(!result.violations.iter().any(|v| v.code == ViolationCode::CommentNotAllowed));
+        assert!(!result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::CommentNotAllowed));
     }
 
     #[test]
@@ -1293,7 +1336,10 @@ mod tests {
         let validator = SoapValidator::new(config);
         let result = validator.validate(&envelope, None);
 
-        assert!(!result.violations.iter().any(|v| v.code == ViolationCode::MissingNamespace));
+        assert!(!result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::MissingNamespace));
     }
 
     #[test]
@@ -1317,7 +1363,10 @@ mod tests {
         let result = validator.validate(&envelope, None);
 
         assert!(result.has_violations());
-        assert!(result.violations.iter().any(|v| v.code == ViolationCode::MissingNamespace));
+        assert!(result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::MissingNamespace));
     }
 
     #[test]
@@ -1343,7 +1392,10 @@ mod tests {
         let validator = SoapValidator::new(config);
         let result = validator.validate(&envelope, None);
 
-        assert!(!result.violations.iter().any(|v| v.code == ViolationCode::TextTooLong));
+        assert!(!result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::TextTooLong));
     }
 
     // --- Metrics tracking ---
@@ -1364,9 +1416,15 @@ mod tests {
         let validator = SoapValidator::new(test_config());
         let result = validator.validate(&envelope, None);
 
-        assert_eq!(result.metrics.element_count, envelope.body.analysis.element_count);
+        assert_eq!(
+            result.metrics.element_count,
+            envelope.body.analysis.element_count
+        );
         assert_eq!(result.metrics.body_depth, envelope.body.analysis.max_depth);
-        assert_eq!(result.metrics.max_text_length, envelope.body.analysis.max_text_length);
+        assert_eq!(
+            result.metrics.max_text_length,
+            envelope.body.analysis.max_text_length
+        );
     }
 
     // --- Multiple violations in one request ---
@@ -1391,9 +1449,18 @@ mod tests {
 
         // Should have at least 3 violations
         assert!(result.violations.len() >= 3);
-        assert!(result.violations.iter().any(|v| v.code == ViolationCode::UnsupportedVersion));
-        assert!(result.violations.iter().any(|v| v.code == ViolationCode::MissingHeader));
-        assert!(result.violations.iter().any(|v| v.code == ViolationCode::BodyDepthExceeded));
+        assert!(result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::UnsupportedVersion));
+        assert!(result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::MissingHeader));
+        assert!(result
+            .violations
+            .iter()
+            .any(|v| v.code == ViolationCode::BodyDepthExceeded));
     }
 
     // --- ValidationResult API ---

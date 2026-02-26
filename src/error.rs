@@ -144,7 +144,11 @@ impl Violation {
     }
 
     /// Create a violation with location.
-    pub fn with_location(code: ViolationCode, message: impl Into<String>, location: impl Into<String>) -> Self {
+    pub fn with_location(
+        code: ViolationCode,
+        message: impl Into<String>,
+        location: impl Into<String>,
+    ) -> Self {
         Self {
             code,
             message: message.into(),
@@ -154,7 +158,10 @@ impl Violation {
 }
 
 /// Generate a SOAP Fault response for violations.
-pub fn soap_fault_response(violations: &[Violation], soap_version: Option<SoapFaultVersion>) -> String {
+pub fn soap_fault_response(
+    violations: &[Violation],
+    soap_version: Option<SoapFaultVersion>,
+) -> String {
     let version = soap_version.unwrap_or(SoapFaultVersion::Soap11);
 
     match version {
@@ -270,23 +277,44 @@ mod tests {
         let codes = vec![
             (ViolationCode::InvalidXml, "INVALID_XML"),
             (ViolationCode::MissingEnvelope, "MISSING_ENVELOPE"),
-            (ViolationCode::InvalidEnvelopeStructure, "INVALID_ENVELOPE_STRUCTURE"),
+            (
+                ViolationCode::InvalidEnvelopeStructure,
+                "INVALID_ENVELOPE_STRUCTURE",
+            ),
             (ViolationCode::UnsupportedVersion, "UNSUPPORTED_VERSION"),
             (ViolationCode::MissingHeader, "MISSING_HEADER"),
             (ViolationCode::BodyDepthExceeded, "BODY_DEPTH_EXCEEDED"),
-            (ViolationCode::MissingSecurityHeader, "MISSING_SECURITY_HEADER"),
+            (
+                ViolationCode::MissingSecurityHeader,
+                "MISSING_SECURITY_HEADER",
+            ),
             (ViolationCode::InvalidTimestamp, "INVALID_TIMESTAMP"),
             (ViolationCode::TimestampExpired, "TIMESTAMP_EXPIRED"),
-            (ViolationCode::MissingUsernameToken, "MISSING_USERNAME_TOKEN"),
+            (
+                ViolationCode::MissingUsernameToken,
+                "MISSING_USERNAME_TOKEN",
+            ),
             (ViolationCode::InvalidPasswordType, "INVALID_PASSWORD_TYPE"),
-            (ViolationCode::MissingSamlAssertion, "MISSING_SAML_ASSERTION"),
+            (
+                ViolationCode::MissingSamlAssertion,
+                "MISSING_SAML_ASSERTION",
+            ),
             (ViolationCode::OperationNotAllowed, "OPERATION_NOT_ALLOWED"),
             (ViolationCode::MissingSoapAction, "MISSING_SOAP_ACTION"),
             (ViolationCode::SoapActionMismatch, "SOAP_ACTION_MISMATCH"),
             (ViolationCode::DoctypeDetected, "DOCTYPE_DETECTED"),
-            (ViolationCode::ExternalEntityDetected, "EXTERNAL_ENTITY_DETECTED"),
-            (ViolationCode::ProcessingInstructionDetected, "PROCESSING_INSTRUCTION_DETECTED"),
-            (ViolationCode::EntityExpansionExceeded, "ENTITY_EXPANSION_EXCEEDED"),
+            (
+                ViolationCode::ExternalEntityDetected,
+                "EXTERNAL_ENTITY_DETECTED",
+            ),
+            (
+                ViolationCode::ProcessingInstructionDetected,
+                "PROCESSING_INSTRUCTION_DETECTED",
+            ),
+            (
+                ViolationCode::EntityExpansionExceeded,
+                "ENTITY_EXPANSION_EXCEEDED",
+            ),
             (ViolationCode::TooManyElements, "TOO_MANY_ELEMENTS"),
             (ViolationCode::TextTooLong, "TEXT_TOO_LONG"),
             (ViolationCode::CdataNotAllowed, "CDATA_NOT_ALLOWED"),
@@ -345,9 +373,10 @@ mod tests {
 
     #[test]
     fn test_soap_11_fault() {
-        let violations = vec![
-            Violation::new(ViolationCode::DoctypeDetected, "DOCTYPE declaration not allowed"),
-        ];
+        let violations = vec![Violation::new(
+            ViolationCode::DoctypeDetected,
+            "DOCTYPE declaration not allowed",
+        )];
         let fault = soap_fault_response(&violations, Some(SoapFaultVersion::Soap11));
         assert!(fault.contains("http://schemas.xmlsoap.org/soap/envelope/"));
         assert!(fault.contains("DOCTYPE_DETECTED"));
@@ -355,9 +384,7 @@ mod tests {
 
     #[test]
     fn test_soap_12_fault() {
-        let violations = vec![
-            Violation::new(ViolationCode::InvalidXml, "Malformed XML"),
-        ];
+        let violations = vec![Violation::new(ViolationCode::InvalidXml, "Malformed XML")];
         let fault = soap_fault_response(&violations, Some(SoapFaultVersion::Soap12));
         assert!(fault.contains("http://www.w3.org/2003/05/soap-envelope"));
         assert!(fault.contains("soap:Sender"));
@@ -365,9 +392,7 @@ mod tests {
 
     #[test]
     fn test_soap_fault_default_version_is_11() {
-        let violations = vec![
-            Violation::new(ViolationCode::InvalidXml, "error"),
-        ];
+        let violations = vec![Violation::new(ViolationCode::InvalidXml, "error")];
         let fault = soap_fault_response(&violations, None);
         // Default should be SOAP 1.1
         assert!(fault.contains("http://schemas.xmlsoap.org/soap/envelope/"));
@@ -377,9 +402,10 @@ mod tests {
 
     #[test]
     fn test_soap_11_fault_structure() {
-        let violations = vec![
-            Violation::new(ViolationCode::MissingEnvelope, "No SOAP envelope"),
-        ];
+        let violations = vec![Violation::new(
+            ViolationCode::MissingEnvelope,
+            "No SOAP envelope",
+        )];
         let fault = soap_fault_response(&violations, Some(SoapFaultVersion::Soap11));
 
         // Verify SOAP 1.1 fault structure
@@ -397,9 +423,10 @@ mod tests {
 
     #[test]
     fn test_soap_12_fault_structure() {
-        let violations = vec![
-            Violation::new(ViolationCode::OperationNotAllowed, "Not allowed"),
-        ];
+        let violations = vec![Violation::new(
+            ViolationCode::OperationNotAllowed,
+            "Not allowed",
+        )];
         let fault = soap_fault_response(&violations, Some(SoapFaultVersion::Soap12));
 
         // Verify SOAP 1.2 fault structure
@@ -444,12 +471,10 @@ mod tests {
 
     #[test]
     fn test_soap_fault_xml_escaping() {
-        let violations = vec![
-            Violation::new(
-                ViolationCode::InvalidXml,
-                "Invalid chars: <script>alert('xss')</script> & \"quotes\"",
-            ),
-        ];
+        let violations = vec![Violation::new(
+            ViolationCode::InvalidXml,
+            "Invalid chars: <script>alert('xss')</script> & \"quotes\"",
+        )];
         let fault = soap_fault_response(&violations, Some(SoapFaultVersion::Soap11));
 
         // Special characters should be escaped
@@ -504,7 +529,10 @@ mod tests {
         assert_eq!(format!("{}", err), "XXE attack detected: DOCTYPE found");
 
         let err = SoapError::BodyValidation("too many elements".to_string());
-        assert_eq!(format!("{}", err), "Body validation error: too many elements");
+        assert_eq!(
+            format!("{}", err),
+            "Body validation error: too many elements"
+        );
 
         let err = SoapError::Config("invalid YAML".to_string());
         assert_eq!(format!("{}", err), "Configuration error: invalid YAML");

@@ -7,15 +7,13 @@ use crate::error::{soap_fault_response, SoapFaultVersion, Violation, ViolationCo
 use crate::parser::{parse_soap_action, parse_soap_envelope};
 use crate::validator::{SoapValidator, ValidationMetrics};
 use async_trait::async_trait;
+use std::sync::atomic::{AtomicU64, Ordering};
+use tracing::{debug, info, warn};
 use zentinel_agent_protocol::v2::{
     AgentCapabilities, AgentFeatures, AgentHandlerV2, AgentLimits, DrainReason, HealthConfig,
     HealthStatus, MetricsReport, ShutdownReason,
 };
-use zentinel_agent_protocol::{
-    AgentResponse, Decision, EventType, HeaderOp, RequestHeadersEvent,
-};
-use std::sync::atomic::{AtomicU64, Ordering};
-use tracing::{debug, info, warn};
+use zentinel_agent_protocol::{AgentResponse, Decision, EventType, HeaderOp, RequestHeadersEvent};
 
 /// SOAP Security Agent for Zentinel.
 ///
@@ -132,10 +130,7 @@ impl SoapSecurityAgent {
         event: &RequestHeadersEvent,
         body: Option<&[u8]>,
     ) -> AgentResponse {
-        let correlation_id = event
-            .metadata
-            .correlation_id
-            .clone();
+        let correlation_id = event.metadata.correlation_id.clone();
 
         let client_ip = event.metadata.client_ip.clone();
 
@@ -148,7 +143,11 @@ impl SoapSecurityAgent {
         );
 
         // Check Content-Type
-        let content_type = event.headers.get("content-type").and_then(|v| v.first()).map(|s| s.as_str());
+        let content_type = event
+            .headers
+            .get("content-type")
+            .and_then(|v| v.first())
+            .map(|s| s.as_str());
         if !self.is_valid_content_type(content_type) {
             debug!(
                 correlation_id = %correlation_id,
@@ -189,11 +188,9 @@ impl SoapSecurityAgent {
             );
 
             return match self.config.settings.fail_action {
-                FailAction::Block => self.build_block_response(
-                    &[violation],
-                    &ValidationMetrics::default(),
-                    None,
-                ),
+                FailAction::Block => {
+                    self.build_block_response(&[violation], &ValidationMetrics::default(), None)
+                }
                 FailAction::Allow => {
                     info!(
                         correlation_id = %correlation_id,
@@ -216,11 +213,9 @@ impl SoapSecurityAgent {
                 );
 
                 return match self.config.settings.fail_action {
-                    FailAction::Block => self.build_block_response(
-                        &[violation],
-                        &ValidationMetrics::default(),
-                        None,
-                    ),
+                    FailAction::Block => {
+                        self.build_block_response(&[violation], &ValidationMetrics::default(), None)
+                    }
                     FailAction::Allow => {
                         info!(
                             correlation_id = %correlation_id,
@@ -261,15 +256,20 @@ impl SoapSecurityAgent {
             }
 
             match self.config.settings.fail_action {
-                FailAction::Block => {
-                    self.build_block_response(&result.violations, &result.metrics, result.soap_version)
-                }
+                FailAction::Block => self.build_block_response(
+                    &result.violations,
+                    &result.metrics,
+                    result.soap_version,
+                ),
                 FailAction::Allow => {
                     info!(
                         correlation_id = %correlation_id,
                         "Violations detected but allowing request (fail_action=allow)"
                     );
-                    self.add_allow_headers_to_response(AgentResponse::default_allow(), &result.metrics)
+                    self.add_allow_headers_to_response(
+                        AgentResponse::default_allow(),
+                        &result.metrics,
+                    )
                 }
             }
         } else {
@@ -355,7 +355,11 @@ impl AgentHandlerV2 for SoapSecurityAgent {
         self.requests_processed.fetch_add(1, Ordering::Relaxed);
 
         // For v2, we may need to request the body if content-type is SOAP
-        let content_type = event.headers.get("content-type").and_then(|v| v.first()).map(|s| s.as_str());
+        let content_type = event
+            .headers
+            .get("content-type")
+            .and_then(|v| v.first())
+            .map(|s| s.as_str());
 
         if self.is_valid_content_type(content_type) {
             // Need body to validate SOAP - signal we need more data
@@ -395,9 +399,10 @@ impl AgentHandlerV2 for SoapSecurityAgent {
             },
             method: "POST".to_string(),
             uri: String::new(),
-            headers: std::collections::HashMap::from([
-                ("content-type".to_string(), vec!["text/xml".to_string()]),
-            ]),
+            headers: std::collections::HashMap::from([(
+                "content-type".to_string(),
+                vec!["text/xml".to_string()],
+            )]),
         };
 
         let response = self.process_soap_request(&headers_event, Some(&body_data));
@@ -476,8 +481,8 @@ impl AgentHandlerV2 for SoapSecurityAgent {
 mod tests {
     use super::*;
     use crate::config::{
-        BodyValidationConfig, EnvelopeConfig, OperationMode, OperationsConfig,
-        SettingsConfig, WsSecurityConfig, XxePreventionConfig,
+        BodyValidationConfig, EnvelopeConfig, OperationMode, OperationsConfig, SettingsConfig,
+        WsSecurityConfig, XxePreventionConfig,
     };
     use std::collections::HashMap;
     use zentinel_agent_protocol::RequestMetadata;
@@ -897,7 +902,12 @@ mod tests {
         let response = agent.process_soap_request(&event, Some(body));
         assert!(matches!(response.decision, Decision::Block { .. }));
 
-        if let Decision::Block { status, body, headers } = &response.decision {
+        if let Decision::Block {
+            status,
+            body,
+            headers,
+        } = &response.decision
+        {
             assert_eq!(*status, 500);
             assert!(body.as_ref().unwrap().contains("OPERATION_NOT_ALLOWED"));
             // Content-Type should be text/xml for SOAP 1.1
@@ -1098,7 +1108,9 @@ mod tests {
         let agent = SoapSecurityAgent::new(test_config());
         let config_json = serde_json::json!({"envelope": {"max_body_depth": 5}});
 
-        let accepted = agent.on_configure(config_json, Some("v2".to_string())).await;
+        let accepted = agent
+            .on_configure(config_json, Some("v2".to_string()))
+            .await;
         assert!(accepted);
     }
 
@@ -1143,6 +1155,11 @@ mod tests {
 
         // The process_soap_request doesn't increment counters, only the async handlers do
         // So counters should still be 0
-        assert_eq!(agent.requests_processed.load(std::sync::atomic::Ordering::Relaxed), 0);
+        assert_eq!(
+            agent
+                .requests_processed
+                .load(std::sync::atomic::Ordering::Relaxed),
+            0
+        );
     }
 }

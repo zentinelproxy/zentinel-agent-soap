@@ -317,7 +317,10 @@ mod tests {
         let config = SoapSecurityConfig::default();
         let yaml = serde_yaml::to_string(&config).unwrap();
         let parsed: SoapSecurityConfig = serde_yaml::from_str(&yaml).unwrap();
-        assert_eq!(parsed.envelope.max_body_depth, config.envelope.max_body_depth);
+        assert_eq!(
+            parsed.envelope.max_body_depth,
+            config.envelope.max_body_depth
+        );
     }
 
     #[test]
@@ -360,9 +363,15 @@ operations:
         assert!(!settings.debug_headers);
         assert_eq!(settings.fail_action, FailAction::Block);
         assert_eq!(settings.allowed_content_types.len(), 3);
-        assert!(settings.allowed_content_types.contains(&"text/xml".to_string()));
-        assert!(settings.allowed_content_types.contains(&"application/soap+xml".to_string()));
-        assert!(settings.allowed_content_types.contains(&"application/xml".to_string()));
+        assert!(settings
+            .allowed_content_types
+            .contains(&"text/xml".to_string()));
+        assert!(settings
+            .allowed_content_types
+            .contains(&"application/soap+xml".to_string()));
+        assert!(settings
+            .allowed_content_types
+            .contains(&"application/xml".to_string()));
     }
 
     #[test]
@@ -530,8 +539,14 @@ ws_security:
         assert_eq!(config.ws_security.max_timestamp_age_secs, 600);
         assert!(config.ws_security.require_username_token);
         assert_eq!(config.ws_security.allowed_password_types.len(), 2);
-        assert!(config.ws_security.allowed_password_types.contains(&PasswordType::PasswordText));
-        assert!(config.ws_security.allowed_password_types.contains(&PasswordType::PasswordDigest));
+        assert!(config
+            .ws_security
+            .allowed_password_types
+            .contains(&PasswordType::PasswordText));
+        assert!(config
+            .ws_security
+            .allowed_password_types
+            .contains(&PasswordType::PasswordDigest));
         assert!(config.ws_security.require_saml);
         assert_eq!(
             config.ws_security.identity_header,
@@ -651,7 +666,10 @@ xxe_prevention:
         assert!(parsed.envelope.require_header);
         assert!(parsed.ws_security.enabled);
         assert_eq!(parsed.ws_security.max_timestamp_age_secs, 600);
-        assert_eq!(parsed.ws_security.identity_header, Some("X-User".to_string()));
+        assert_eq!(
+            parsed.ws_security.identity_header,
+            Some("X-User".to_string())
+        );
         assert_eq!(parsed.operations.mode, OperationMode::Denylist);
         assert!(parsed.operations.validate_action_match);
     }
@@ -700,7 +718,10 @@ settings:
 "#;
         let config: SoapSecurityConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.settings.allowed_content_types.len(), 3);
-        assert!(config.settings.allowed_content_types.contains(&"application/custom+soap".to_string()));
+        assert!(config
+            .settings
+            .allowed_content_types
+            .contains(&"application/custom+soap".to_string()));
     }
 
     #[test]
@@ -729,7 +750,10 @@ envelope:
         let config = SoapSecurityConfig::default();
         let json = serde_json::to_string(&config).unwrap();
         let parsed: SoapSecurityConfig = serde_json::from_str(&json).unwrap();
-        assert_eq!(parsed.envelope.max_body_depth, config.envelope.max_body_depth);
+        assert_eq!(
+            parsed.envelope.max_body_depth,
+            config.envelope.max_body_depth
+        );
         assert_eq!(parsed.settings.max_body_size, config.settings.max_body_size);
     }
 }

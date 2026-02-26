@@ -6,12 +6,12 @@
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use zentinel_agent_protocol::v2::GrpcAgentServerV2;
-use zentinel_agent_soap::{SoapSecurityAgent, SoapSecurityConfig};
 use std::path::PathBuf;
 use tokio::signal;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
+use zentinel_agent_protocol::v2::GrpcAgentServerV2;
+use zentinel_agent_soap::{SoapSecurityAgent, SoapSecurityConfig};
 
 /// SOAP Security Agent for Zentinel proxy.
 ///
@@ -60,7 +60,10 @@ async fn main() -> Result<()> {
     tracing::subscriber::set_global_default(subscriber)
         .context("Failed to set tracing subscriber")?;
 
-    info!("Starting Zentinel SOAP Security Agent v{}", env!("CARGO_PKG_VERSION"));
+    info!(
+        "Starting Zentinel SOAP Security Agent v{}",
+        env!("CARGO_PKG_VERSION")
+    );
     info!("Config file: {}", args.config.display());
 
     // Load configuration
@@ -91,9 +94,7 @@ async fn main() -> Result<()> {
     if let Some(grpc_addr) = args.grpc_address {
         // Run with gRPC transport (v2 protocol)
         info!("Using gRPC transport at {}", grpc_addr);
-        let addr = grpc_addr
-            .parse()
-            .context("Invalid gRPC address format")?;
+        let addr = grpc_addr.parse().context("Invalid gRPC address format")?;
 
         let server = GrpcAgentServerV2::new("soap-security", Box::new(agent));
 

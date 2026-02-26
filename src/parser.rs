@@ -10,8 +10,10 @@ use quick_xml::Reader;
 /// SOAP namespace URIs.
 pub const SOAP_11_NS: &str = "http://schemas.xmlsoap.org/soap/envelope/";
 pub const SOAP_12_NS: &str = "http://www.w3.org/2003/05/soap-envelope";
-pub const WSSE_NS: &str = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd";
-pub const WSU_NS: &str = "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd";
+pub const WSSE_NS: &str =
+    "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd";
+pub const WSU_NS: &str =
+    "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd";
 pub const SAML_NS: &str = "urn:oasis:names:tc:SAML:2.0:assertion";
 
 /// Parsed SOAP envelope.
@@ -110,9 +112,8 @@ pub struct BodyAnalysis {
 
 /// Parse raw bytes as SOAP envelope.
 pub fn parse_soap_envelope(data: &[u8]) -> Result<SoapEnvelope, Violation> {
-    let xml_str = std::str::from_utf8(data).map_err(|e| {
-        Violation::new(ViolationCode::InvalidXml, format!("Invalid UTF-8: {}", e))
-    })?;
+    let xml_str = std::str::from_utf8(data)
+        .map_err(|e| Violation::new(ViolationCode::InvalidXml, format!("Invalid UTF-8: {}", e)))?;
 
     // Pre-scan for XXE patterns (belt-and-suspenders with quick-xml's safety)
     check_xxe_patterns(xml_str)?;
@@ -369,9 +370,7 @@ fn check_xxe_patterns(xml: &str) -> Result<(), Violation> {
 /// Extract local name from element.
 fn local_name_str(e: &BytesStart) -> String {
     let name = e.local_name();
-    std::str::from_utf8(name.as_ref())
-        .unwrap_or("")
-        .to_string()
+    std::str::from_utf8(name.as_ref()).unwrap_or("").to_string()
 }
 
 /// Get namespace URI for element.
@@ -790,7 +789,11 @@ mod tests {
 </soap:Envelope>"#;
 
         let envelope = parse_soap_envelope(xml.as_bytes()).unwrap();
-        assert!(envelope.body.analysis.namespaces.contains(&"http://example.org/users".to_string()));
+        assert!(envelope
+            .body
+            .analysis
+            .namespaces
+            .contains(&"http://example.org/users".to_string()));
     }
 
     #[test]
@@ -872,7 +875,10 @@ mod tests {
 
         let result = parse_soap_envelope(xml.as_bytes());
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, ViolationCode::ExternalEntityDetected);
+        assert_eq!(
+            result.unwrap_err().code,
+            ViolationCode::ExternalEntityDetected
+        );
     }
 
     #[test]
@@ -885,7 +891,10 @@ mod tests {
 
         let result = parse_soap_envelope(xml.as_bytes());
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().code, ViolationCode::ExternalEntityDetected);
+        assert_eq!(
+            result.unwrap_err().code,
+            ViolationCode::ExternalEntityDetected
+        );
     }
 
     #[test]
@@ -1157,6 +1166,10 @@ mod tests {
         let envelope = parse_soap_envelope(xml.as_bytes()).unwrap();
         assert_eq!(envelope.body.operation, Some("Transfer".to_string()));
         // The namespaces found should include what's declared on direct body child elements
-        assert!(envelope.body.analysis.namespaces.contains(&"http://example.org/banking".to_string()));
+        assert!(envelope
+            .body
+            .analysis
+            .namespaces
+            .contains(&"http://example.org/banking".to_string()));
     }
 }
