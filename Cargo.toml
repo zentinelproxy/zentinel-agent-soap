@@ -1,6 +1,6 @@
 [package]
 name = "zentinel-agent-soap"
-version = "0.2.0"
+version = "0.5.0"
 edition = "2021"
 authors = ["Raskell <hello@raskell.io>"]
 description = "SOAP security agent for Zentinel proxy - envelope validation, WS-Security, and operation control"

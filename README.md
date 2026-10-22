@@ -44,12 +44,14 @@ operations:
   actions: ["GetUser", "List*"]
 EOF
 
-zentinel-soap-agent --config soap.yaml --grpc-address 127.0.0.1:50051
+zentinel-soap-agent --config soap.yaml --socket /tmp/zentinel-soap.sock
 ```
 
-The agent speaks gRPC only. Zentinel sends request bodies to agents only when
-the top-level `waf { body-inspection { inspect-request-body #true } }` is set,
-so the config needs that block (with `mode "off"` it enables nothing else):
+The agent serves agent protocol v2 on a Unix socket (`--socket`) or on gRPC
+(`--grpc-address`). Zentinel releases up to 26.10_7 send request bodies to
+agents only when the top-level `waf { body-inspection { inspect-request-body
+#true } }` is set, so the config needs that block (with `mode "off"` it
+enables nothing else; Zentinel main no longer needs it):
 
 ```kdl
 system {
@@ -74,7 +76,7 @@ waf {
 
 agents {
     agent "soap" type="custom" {
-        grpc "http://127.0.0.1:50051"
+        unix-socket "/tmp/zentinel-soap.sock"
         events "request_headers" "request_body"
         timeout-ms 200
         request-body-mode "buffer"
@@ -106,8 +108,10 @@ upstreams {
 }
 ```
 
-`request-body-mode "buffer"` matters: the agent parses each body chunk on its
-own, so a streamed multi-chunk body would fail to parse.
+`request-body-mode "buffer"` (the default) sends the whole body at once. Since
+0.5.0 the agent also collects streamed chunks per request and validates the
+envelope once the last one has arrived (before, each chunk was parsed on its
+own, so a multi-chunk body failed to parse).
 
 ## Install
 
@@ -130,10 +134,11 @@ From source: `cargo build --release`.
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--config`, `-c` | `config.yaml` | YAML file; if it does not exist, the defaults below apply |
-| `--grpc-address` | none, required | gRPC listen address, e.g. `127.0.0.1:50051` |
-| `--socket`, `-s` | `/tmp/zentinel-soap.sock` | Not implemented: without `--grpc-address` the agent exits with an error |
+| `--config`, `-c` | `config.yaml` if present | YAML file. Without the option, `config.yaml` in the working directory is used if it exists, otherwise the defaults below. A `--config` file that does not exist is an error |
+| `--socket`, `-s` | `/tmp/zentinel-soap.sock` | Unix socket to listen on (agent protocol v2) |
+| `--grpc-address` | none | Serve gRPC (agent protocol v2) on this address instead of the socket, e.g. `127.0.0.1:50051` |
 | `--log-level`, `-l` | `info` | Log level |
+| `--version` | | Print `zentinel-soap-agent <version>` and exit |
 
 The file is read once at startup. The proxy does not forward an agent block's
 `config { }` to the agent, so use the file.
@@ -171,14 +176,37 @@ passwords.
 - XXE checks always run; `xxe_prevention.*` (including `enabled`,
   `max_entity_expansions`) and `envelope.require_valid_envelope` are read but
   change nothing, and processing instructions are not checked.
-- `operations.require_soap_action_header` blocks **every** request and
-  `operations.validate_action_match` never runs: the `SOAPAction` header is
-  not available in the body phase where the checks happen. Leave both off.
+- Until 0.5.0, `operations.require_soap_action_header` blocked **every**
+  request and `operations.validate_action_match` never ran, because the
+  `SOAPAction` header was not available in the body phase. The agent now
+  keeps each SOAP request's headers until its body has arrived, so both work.
 - `operations.rate_limits` is not implemented.
 - The `X-SOAP-Validated`, `X-SOAP-Operation` and `ws_security.identity_header`
-  request headers and the debug response headers are set from the body phase,
-  which Zentinel 0.6.50 does not apply, so they do not reach the service or
-  the client.
+  request headers and the debug response headers are set from the body phase.
+  Zentinel drops request-header changes made there (the upstream request's
+  headers are already on their way), so they do not reach the service.
+
+## Releases and smoke test
+
+Releases are built from their tag by the shared pipeline in
+[`zentinelproxy/.github`](https://github.com/zentinelproxy/.github)
+(`agent-release.yml`): each platform's binary is run behind a real Zentinel
+by [`scripts/smoke-test.sh`](scripts/smoke-test.sh) before anything is
+published, and CI runs the same smoke job on every push. Over the Unix socket
+and over gRPC, fail-closed, it checks the handshake, that a GET and a non-SOAP
+POST are forwarded, and that with the agent stopped requests are refused.
+
+The envelope cases (a valid envelope is forwarded; a malformed one and an XXE
+`DOCTYPE` get the `500` Fault) are behind `SOAP_SMOKE_BODIES=1`, because no
+Zentinel passes them yet: 26.10_7 does not send the body without a `waf`
+block (so the envelope is never checked), and main checks it and answers the
+Fault but has already sent the request headers (not the body) to the
+upstream, which the harness counts as reaching it. Locally:
+
+```bash
+AGENT_SMOKE=../.github/agent-smoke/smoke.py \
+  scripts/smoke-test.sh target/release/zentinel-soap-agent ./zentinel
+```
 
 ## Development
 
