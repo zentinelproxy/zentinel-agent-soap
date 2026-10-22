@@ -7,7 +7,9 @@ use crate::error::{soap_fault_response, SoapFaultVersion, Violation, ViolationCo
 use crate::parser::{parse_soap_action, parse_soap_envelope};
 use crate::validator::{SoapValidator, ValidationMetrics};
 use async_trait::async_trait;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 use tracing::{debug, info, warn};
 use zentinel_agent_protocol::v2::{
     AgentCapabilities, AgentFeatures, AgentHandlerV2, AgentLimits, DrainReason, HealthConfig,
@@ -25,7 +27,20 @@ pub struct SoapSecurityAgent {
     /// Metrics tracking
     requests_processed: AtomicU64,
     requests_blocked: AtomicU64,
+    /// SOAP requests whose body is still arriving, by correlation id: the
+    /// headers (Content-Type, SOAPAction, ...) and the body received so far.
+    pending: Mutex<HashMap<String, PendingRequest>>,
 }
+
+/// A SOAP request between its headers and the last body chunk.
+struct PendingRequest {
+    headers: RequestHeadersEvent,
+    body: Vec<u8>,
+}
+
+/// Upper bound on requests waiting for their body. Requests that are
+/// abandoned before their last chunk would otherwise stay here forever.
+const MAX_PENDING_REQUESTS: usize = 10_000;
 
 impl SoapSecurityAgent {
     /// Create a new SOAP security agent with the given configuration.
@@ -36,7 +51,13 @@ impl SoapSecurityAgent {
             validator,
             requests_processed: AtomicU64::new(0),
             requests_blocked: AtomicU64::new(0),
+            pending: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Number of SOAP requests waiting for the rest of their body.
+    pub fn pending_requests(&self) -> usize {
+        self.pending.lock().map(|p| p.len()).unwrap_or(0)
     }
 
     /// Check if Content-Type is valid for SOAP.
@@ -351,61 +372,89 @@ impl AgentHandlerV2 for SoapSecurityAgent {
     }
 
     /// Handle request headers event.
+    ///
+    /// A SOAP request (by Content-Type) is held until its body has arrived:
+    /// the headers are kept for the body phase, where the envelope is
+    /// validated together with them (SOAPAction, client address, ...).
+    /// Anything else is allowed straight away.
     async fn on_request_headers(&self, event: RequestHeadersEvent) -> AgentResponse {
         self.requests_processed.fetch_add(1, Ordering::Relaxed);
 
-        // For v2, we may need to request the body if content-type is SOAP
         let content_type = event
             .headers
             .get("content-type")
             .and_then(|v| v.first())
             .map(|s| s.as_str());
 
-        if self.is_valid_content_type(content_type) {
-            // Need body to validate SOAP - signal we need more data
-            AgentResponse::needs_more_data()
-        } else {
-            // Not a SOAP request, allow through
-            AgentResponse::default_allow()
+        if !self.is_valid_content_type(content_type) {
+            return AgentResponse::default_allow();
         }
+
+        let mut pending = match self.pending.lock() {
+            Ok(p) => p,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        if pending.len() >= MAX_PENDING_REQUESTS {
+            warn!(
+                pending = pending.len(),
+                "Too many SOAP requests waiting for their body; dropping the oldest state"
+            );
+            pending.clear();
+        }
+        pending.insert(
+            event.metadata.correlation_id.clone(),
+            PendingRequest {
+                headers: event,
+                body: Vec::new(),
+            },
+        );
+
+        // Need the body to validate the envelope.
+        AgentResponse::needs_more_data()
     }
 
     /// Handle request body chunk event.
+    ///
+    /// Chunks are collected per request until the last one (or until the
+    /// body exceeds `max_body_size`), then the whole envelope is validated.
+    /// Bodies of requests that were not SOAP at the header phase are not
+    /// looked at.
     async fn on_request_body_chunk(
         &self,
         event: zentinel_agent_protocol::RequestBodyChunkEvent,
     ) -> AgentResponse {
-        // Decode body from base64 if needed
         use base64::{engine::general_purpose::STANDARD, Engine as _};
 
-        let body_data = STANDARD.decode(&event.data).unwrap_or_default();
-
-        // Create a minimal RequestHeadersEvent for processing
-        // In a real implementation, we'd cache headers from the initial request
-        let headers_event = RequestHeadersEvent {
-            metadata: zentinel_agent_protocol::RequestMetadata {
-                correlation_id: event.correlation_id.clone(),
-                request_id: String::new(),
-                client_ip: String::new(),
-                client_port: 0,
-                server_name: None,
-                protocol: String::new(),
-                tls_version: None,
-                tls_cipher: None,
-                route_id: None,
-                upstream_id: None,
-                timestamp: String::new(),
-                traceparent: None,
-            },
-            method: "POST".to_string(),
-            uri: String::new(),
-            headers: std::collections::HashMap::from([(
-                "content-type".to_string(),
-                vec!["text/xml".to_string()],
-            )]),
+        let chunk = match STANDARD.decode(&event.data) {
+            Ok(c) => c,
+            Err(e) => {
+                warn!(correlation_id = %event.correlation_id, error = %e, "Body chunk is not valid base64");
+                Vec::new()
+            }
         };
 
-        let response = self.process_soap_request(&headers_event, Some(&body_data));
+        let finished = {
+            let mut pending = match self.pending.lock() {
+                Ok(p) => p,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            let Some(entry) = pending.get_mut(&event.correlation_id) else {
+                // Not a SOAP request (or one we no longer track).
+                return AgentResponse::default_allow();
+            };
+            entry.body.extend_from_slice(&chunk);
+            if event.is_last || entry.body.len() > self.config.settings.max_body_size {
+                pending.remove(&event.correlation_id)
+            } else {
+                None
+            }
+        };
+
+        let Some(request) = finished else {
+            return AgentResponse::needs_more_data();
+        };
+
+        let response = self.process_soap_request(&request.headers, Some(&request.body));
 
         // Track blocked requests
         if matches!(response.decision, Decision::Block { .. }) {
@@ -1160,6 +1209,96 @@ mod tests {
                 .requests_processed
                 .load(std::sync::atomic::Ordering::Relaxed),
             0
+        );
+    }
+
+    // --- Body phase: chunks are tied to their request's headers ---
+
+    fn body_chunk(
+        correlation_id: &str,
+        data: &[u8],
+        is_last: bool,
+    ) -> zentinel_agent_protocol::RequestBodyChunkEvent {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        zentinel_agent_protocol::RequestBodyChunkEvent {
+            correlation_id: correlation_id.to_string(),
+            data: STANDARD.encode(data),
+            is_last,
+            total_size: None,
+            chunk_index: 0,
+            bytes_received: data.len(),
+        }
+    }
+
+    const GET_USER: &[u8] = br#"<?xml version="1.0"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+  <soap:Body>
+    <GetUser xmlns="http://example.org/users"/>
+  </soap:Body>
+</soap:Envelope>"#;
+
+    #[tokio::test]
+    async fn test_body_split_across_chunks_is_validated_whole() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let event = make_request_event(Some("text/xml"), None);
+        assert!(agent.on_request_headers(event).await.needs_more);
+
+        let (first, rest) = GET_USER.split_at(40);
+        let response = agent
+            .on_request_body_chunk(body_chunk("test-corr-123", first, false))
+            .await;
+        assert!(response.needs_more, "a partial envelope must not be judged");
+        let response = agent
+            .on_request_body_chunk(body_chunk("test-corr-123", rest, true))
+            .await;
+        assert!(matches!(response.decision, Decision::Allow));
+        assert!(!response.needs_more);
+        assert_eq!(agent.pending_requests(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_body_of_non_soap_request_is_not_parsed() {
+        let agent = SoapSecurityAgent::new(test_config());
+        let event = make_request_event(Some("application/json"), None);
+        assert!(!agent.on_request_headers(event).await.needs_more);
+
+        let response = agent
+            .on_request_body_chunk(body_chunk("test-corr-123", br#"{"not": "xml"}"#, true))
+            .await;
+        assert!(matches!(response.decision, Decision::Allow));
+    }
+
+    #[tokio::test]
+    async fn test_malformed_body_after_headers_blocked() {
+        let agent = SoapSecurityAgent::new(test_config());
+        agent
+            .on_request_headers(make_request_event(Some("text/xml"), None))
+            .await;
+        let response = agent
+            .on_request_body_chunk(body_chunk("test-corr-123", b"<soap:Envelope><broken", true))
+            .await;
+        assert!(matches!(
+            response.decision,
+            Decision::Block { status: 500, .. }
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_soap_action_header_reaches_body_phase() {
+        let mut config = test_config();
+        config.operations.enabled = true;
+        config.operations.validate_action_match = true;
+        let agent = SoapSecurityAgent::new(config);
+
+        agent
+            .on_request_headers(make_request_event(Some("text/xml"), Some("\"DeleteUser\"")))
+            .await;
+        let response = agent
+            .on_request_body_chunk(body_chunk("test-corr-123", GET_USER, true))
+            .await;
+        assert!(
+            matches!(response.decision, Decision::Block { .. }),
+            "SOAPAction DeleteUser does not match the GetUser body"
         );
     }
 }

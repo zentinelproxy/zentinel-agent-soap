@@ -1,8 +1,10 @@
 //! Zentinel SOAP Security Agent binary.
 //!
-//! Run with: `zentinel-agent-soap --config config.yaml`
+//! Run with: `zentinel-soap-agent --socket /tmp/zentinel-soap.sock`
+//! (or `--grpc-address 127.0.0.1:50051`), optionally `--config soap.yaml`.
 //!
-//! Supports both UDS (Unix Domain Socket) and gRPC transports.
+//! Supports both UDS (Unix Domain Socket) and gRPC transports, agent
+//! protocol v2.
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -10,7 +12,7 @@ use std::path::PathBuf;
 use tokio::signal;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
-use zentinel_agent_protocol::v2::GrpcAgentServerV2;
+use zentinel_agent_protocol::v2::{GrpcAgentServerV2, UdsAgentServerV2};
 use zentinel_agent_soap::{SoapSecurityAgent, SoapSecurityConfig};
 
 /// SOAP Security Agent for Zentinel proxy.
@@ -25,17 +27,19 @@ use zentinel_agent_soap::{SoapSecurityAgent, SoapSecurityConfig};
 /// - Configuration push
 /// - Lifecycle management (shutdown, drain)
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(name = "zentinel-soap-agent", author, version, about, long_about = None)]
 struct Args {
-    /// Path to configuration file (YAML)
-    #[arg(short, long, default_value = "config.yaml")]
-    config: PathBuf,
+    /// Path to configuration file (YAML). Without it, `config.yaml` in the
+    /// working directory is used if it exists, otherwise the defaults.
+    #[arg(short, long)]
+    config: Option<PathBuf>,
 
-    /// Unix socket path for UDS transport (v1 compatibility)
+    /// Unix socket path (UDS transport, agent protocol v2)
     #[arg(short, long, default_value = "/tmp/zentinel-soap.sock")]
     socket: PathBuf,
 
-    /// gRPC server address for v2 transport (e.g., "[::1]:50051" or "0.0.0.0:50051")
+    /// gRPC listen address (e.g. "127.0.0.1:50051"); when given, the agent
+    /// serves gRPC instead of the Unix socket
     #[arg(long)]
     grpc_address: Option<String>,
 
@@ -64,17 +68,25 @@ async fn main() -> Result<()> {
         "Starting Zentinel SOAP Security Agent v{}",
         env!("CARGO_PKG_VERSION")
     );
-    info!("Config file: {}", args.config.display());
-
-    // Load configuration
-    let config = if args.config.exists() {
-        let content = tokio::fs::read_to_string(&args.config)
-            .await
-            .context("Failed to read config file")?;
-        serde_yaml::from_str(&content).context("Failed to parse config file")?
-    } else {
-        info!("Config file not found, using defaults");
-        SoapSecurityConfig::default()
+    // Load configuration: an explicit --config must exist; the implicit
+    // config.yaml is optional.
+    let config_path = match args.config {
+        Some(path) => Some(path),
+        None => Some(PathBuf::from("config.yaml")).filter(|p| p.exists()),
+    };
+    let config: SoapSecurityConfig = match config_path {
+        Some(path) => {
+            info!("Config file: {}", path.display());
+            let content = tokio::fs::read_to_string(&path)
+                .await
+                .with_context(|| format!("Failed to read config file {}", path.display()))?;
+            serde_yaml::from_str(&content)
+                .with_context(|| format!("Failed to parse config file {}", path.display()))?
+        }
+        None => {
+            info!("No config file, using defaults");
+            SoapSecurityConfig::default()
+        }
     };
 
     info!(
@@ -108,16 +120,20 @@ async fn main() -> Result<()> {
             }
         }
     } else {
-        // UDS transport - for now, log that v2 prefers gRPC
-        info!("Socket path: {}", args.socket.display());
-        info!("Note: For full v2 protocol support, use --grpc-address option");
+        // UDS transport (v2 protocol)
+        info!("Using UDS transport at {}", args.socket.display());
+        let socket = args.socket.clone();
+        let server = UdsAgentServerV2::new("soap-security", args.socket, Box::new(agent));
 
-        // TODO: Implement UDS v2 server when available in the SDK
-        // For now, we only support gRPC in v2
-        anyhow::bail!(
-            "UDS transport not yet implemented for v2. Please use --grpc-address option.\n\
-             Example: zentinel-agent-soap --grpc-address '[::1]:50051'"
-        );
+        tokio::select! {
+            result = server.run() => {
+                result.context("UDS server error")?;
+            }
+            _ = shutdown_signal() => {
+                info!("Shutdown signal received, stopping server");
+            }
+        }
+        let _ = std::fs::remove_file(&socket);
     }
 
     info!("SOAP Security Agent stopped");
