@@ -50,8 +50,8 @@ zentinel-soap-agent --config soap.yaml --socket /tmp/zentinel-soap.sock
 The agent serves agent protocol v2 on a Unix socket (`--socket`) or on gRPC
 (`--grpc-address`). Zentinel releases up to 26.10_7 send request bodies to
 agents only when the top-level `waf { body-inspection { inspect-request-body
-#true } }` is set, so the config needs that block (with `mode "off"` it
-enables nothing else; Zentinel main no longer needs it):
+#true } }` is set, so on those the config needs that block (with `mode "off"`
+it enables nothing else); 26.10_8 and later send the body without it:
 
 ```kdl
 system {
@@ -140,8 +140,9 @@ From source: `cargo build --release`.
 | `--log-level`, `-l` | `info` | Log level |
 | `--version` | | Print `zentinel-soap-agent <version>` and exit |
 
-The file is read once at startup. The proxy does not forward an agent block's
-`config { }` to the agent, so use the file.
+The file is read once at startup. Zentinel 26.10_8 and later send the agent
+block's `config { }` to the agent on every connection (releases up to 0.6.50
+never did); this agent acknowledges it without applying it, so use the file.
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -182,9 +183,11 @@ passwords.
   keeps each SOAP request's headers until its body has arrived, so both work.
 - `operations.rate_limits` is not implemented.
 - The `X-SOAP-Validated`, `X-SOAP-Operation` and `ws_security.identity_header`
-  request headers and the debug response headers are set from the body phase.
-  Zentinel drops request-header changes made there (the upstream request's
-  headers are already on their way), so they do not reach the service.
+  request headers are set from the body phase. Zentinel drops request-header
+  changes made there (the upstream request's headers are already on their
+  way), so they do not reach the service. The debug response headers, also set
+  from the body phase, reach the client on allowed requests from Zentinel
+  26.10_8 (releases up to 26.10_7 dropped them).
 
 ## Releases and smoke test
 
@@ -198,10 +201,11 @@ POST are forwarded, and that with the agent stopped requests are refused.
 
 The envelope cases (a valid envelope is forwarded; a malformed one and an XXE
 `DOCTYPE` get the `500` Fault) are behind `SOAP_SMOKE_BODIES=1`, because no
-Zentinel passes them yet: 26.10_7 does not send the body without a `waf`
-block (so the envelope is never checked), and main checks it and answers the
-Fault but has already sent the request headers (not the body) to the
-upstream, which the harness counts as reaching it. Locally:
+Zentinel release passes them yet: up to 26.10_7 the body is not sent without
+a `waf` block (so the envelope is never checked), and 26.10_8 checks it and
+answers the Fault but has already sent the request headers (not the body) to
+the upstream (zentinelproxy/zentinel#608), which the harness counts as
+reaching it. Locally:
 
 ```bash
 AGENT_SMOKE=../.github/agent-smoke/smoke.py \
